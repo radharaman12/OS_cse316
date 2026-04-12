@@ -1,6 +1,18 @@
 # ============================================================
 #   Real-Time Process Monitoring Dashboard
 #   Built with Python · Streamlit · psutil · Plotly · Pandas
+#
+#   Project structure:
+#       process_monitor/
+#       ├── app.py                        ← YOU ARE HERE
+#       ├── static/
+#       │   ├── css/
+#       │   │   └── dashboard.css         ← All styles
+#       │   └── html/
+#       │       ├── snippets.html         ← HTML fragment reference
+#       │       └── preview.html          ← Static browser preview
+#       └── templates/
+#           └── (reserved for Jinja2 templates if needed)
 # ============================================================
 
 import streamlit as st
@@ -8,7 +20,8 @@ import psutil
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
-
+from pathlib import Path
+import time
 
 # ──────────────────────────────────────────────
 # PAGE CONFIG  (must be the very first st call)
@@ -20,129 +33,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+
 # ──────────────────────────────────────────────
-# CUSTOM CSS  – dark, industrial, neon-accent UI
+# LOAD EXTERNAL CSS
+# Reads dashboard.css from static/css/ and
+# injects it into the Streamlit page.
 # ──────────────────────────────────────────────
-st.markdown("""
-<style>
-/* ── Google Font ── */
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;700;800&display=swap');
+def load_css(css_path: Path) -> None:
+    """Read a CSS file and inject it as a <style> block."""
+    if css_path.exists():
+        css_text = css_path.read_text(encoding="utf-8")
+        st.markdown(f"<style>\n{css_text}\n</style>", unsafe_allow_html=True)
+    else:
+        st.warning(f"CSS file not found: {css_path}")
 
-/* ── Global reset ── */
-html, body, [class*="css"] {
-    font-family: 'Syne', sans-serif;
-    background-color: #0a0c10 !important;
-    color: #c9d1d9 !important;
-}
-
-/* ── Top header bar ── */
-.dash-header {
-    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
-    border-bottom: 1px solid #21262d;
-    padding: 1.2rem 2rem;
-    margin-bottom: 1.5rem;
-    border-radius: 0 0 12px 12px;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-.dash-title {
-    font-size: 1.6rem;
-    font-weight: 800;
-    background: linear-gradient(90deg, #58a6ff, #3fb950, #f78166);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: -0.5px;
-    margin: 0;
-}
-.dash-subtitle {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    color: #6e7681;
-    margin: 0;
-}
-
-/* ── Metric cards ── */
-.metric-card {
-    background: #161b22;
-    border: 1px solid #21262d;
-    border-radius: 10px;
-    padding: 1.2rem 1.4rem;
-    text-align: center;
-    transition: border-color 0.2s;
-}
-.metric-card:hover { border-color: #58a6ff; }
-.metric-label {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    color: #6e7681;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 0.3rem;
-}
-.metric-value {
-    font-size: 2.2rem;
-    font-weight: 800;
-    line-height: 1;
-}
-.metric-sub {
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    color: #6e7681;
-    margin-top: 0.25rem;
-}
-.cpu-color  { color: #58a6ff; }
-.ram-color  { color: #3fb950; }
-.disk-color { color: #d2a8ff; }
-.net-color  { color: #ffa657; }
-
-/* ── Section headings ── */
-.section-heading {
-    font-size: 0.7rem;
-    font-family: 'Share Tech Mono', monospace;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #6e7681;
-    border-left: 3px solid #58a6ff;
-    padding-left: 0.6rem;
-    margin: 1.5rem 0 0.8rem;
-}
-
-/* ── Process table tweaks ── */
-div[data-testid="stDataFrame"] {
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid #21262d;
-}
-
-/* ── Streamlit default overrides ── */
-div[data-testid="stMetricValue"] { font-size: 2rem !important; }
-div[data-testid="stButton"] > button {
-    background: #21262d;
-    color: #58a6ff;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.8rem;
-    padding: 0.4rem 1.2rem;
-    transition: all 0.2s;
-}
-div[data-testid="stButton"] > button:hover {
-    background: #58a6ff;
-    color: #0a0c10;
-    border-color: #58a6ff;
-}
-section[data-testid="stSidebar"] { background: #0d1117; }
-div[data-testid="stTextInput"] > div > input {
-    background: #161b22 !important;
-    border: 1px solid #30363d !important;
-    color: #c9d1d9 !important;
-    border-radius: 8px !important;
-    font-family: 'Share Tech Mono', monospace !important;
-}
-div[data-testid="stSelectbox"] > div { background: #161b22; border-radius: 8px; }
-</style>
-""", unsafe_allow_html=True)
+# Resolve path relative to this script's location
+CSS_FILE = Path(__file__).parent / "dashboard.css"
+load_css(CSS_FILE)
 
 
 # ──────────────────────────────────────────────
@@ -164,10 +71,10 @@ if "time_history" not in st.session_state:
 
 def get_system_stats() -> dict:
     """Return a snapshot of key system-wide metrics."""
-    cpu      = psutil.cpu_percent(interval=0.5)
-    ram      = psutil.virtual_memory()
-    disk     = psutil.disk_usage("/")
-    net      = psutil.net_io_counters()
+    cpu  = psutil.cpu_percent(interval=0.5)
+    ram  = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+    net  = psutil.net_io_counters()
 
     return {
         "cpu_pct":       cpu,
@@ -228,6 +135,7 @@ def append_history(cpu: float, ram: float) -> None:
 # CHART HELPERS
 # ══════════════════════════════════════════════
 
+# Shared Plotly layout used by all charts
 _CHART_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor ="rgba(0,0,0,0)",
@@ -241,6 +149,7 @@ _CHART_LAYOUT = dict(
 
 
 def cpu_chart() -> go.Figure:
+    """Area line chart for CPU usage history."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=st.session_state.time_history,
@@ -257,6 +166,7 @@ def cpu_chart() -> go.Figure:
 
 
 def ram_chart() -> go.Figure:
+    """Area line chart for RAM usage history."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=st.session_state.time_history,
@@ -273,6 +183,7 @@ def ram_chart() -> go.Figure:
 
 
 def gauge_chart(value: float, title: str, color: str) -> go.Figure:
+    """Circular gauge indicator for a single metric."""
     fig = go.Figure(go.Indicator(
         mode ="gauge+number",
         value=value,
@@ -284,7 +195,7 @@ def gauge_chart(value: float, title: str, color: str) -> go.Figure:
             bgcolor  ="rgba(0,0,0,0)",
             borderwidth=0,
             steps    =[
-                dict(range=[0, 60],  color="rgba(255,255,255,0.03)"),
+                dict(range=[0,  60], color="rgba(255,255,255,0.03)"),
                 dict(range=[60, 85], color="rgba(255,166,87,0.08)"),
                 dict(range=[85,100], color="rgba(247,129,102,0.12)"),
             ],
@@ -302,12 +213,44 @@ def gauge_chart(value: float, title: str, color: str) -> go.Figure:
 
 
 # ══════════════════════════════════════════════
+# HTML SNIPPET HELPERS
+# Load HTML fragments from static/html/snippets.html
+# at runtime so markup stays out of Python code.
+# ══════════════════════════════════════════════
+
+HTML_DIR = Path(__file__).parent  / "snippets.html"
+
+
+def _read_snippet(tag_id: str) -> str:
+    """
+    Parse snippets.html and return the HTML comment block
+    whose label matches tag_id.  Falls back to an empty string
+    so the app never crashes on a missing snippet.
+    """
+    snippets_file = HTML_DIR / "snippets.html"
+    if not snippets_file.exists():
+        return ""
+    content = snippets_file.read_text(encoding="utf-8")
+    # Simple marker-based extraction between HTML comments
+    start_marker = f"<!-- {tag_id} -->"
+    end_marker   = "<!-- END -->"
+    start = content.find(start_marker)
+    if start == -1:
+        return ""
+    end = content.find(end_marker, start)
+    if end == -1:
+        return content[start + len(start_marker):]
+    return content[start + len(start_marker):end].strip()
+
+
+# ══════════════════════════════════════════════
 # DASHBOARD  – main render function
 # ══════════════════════════════════════════════
 
 def render_dashboard() -> None:
 
-    # ── Header ────────────────────────────────
+    # ── Header ─────────────────────────────────
+    # HTML defined in static/html/snippets.html
     st.markdown("""
     <div class="dash-header">
         <div>
@@ -317,27 +260,25 @@ def render_dashboard() -> None:
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Fetch live data ────────────────────────
-    stats = get_system_stats()
+    # ── Fetch live data ─────────────────────────
+    stats  = get_system_stats()
     append_history(stats["cpu_pct"], stats["ram_pct"])
     df_all = get_process_dataframe()
 
-    # ── Top control bar ────────────────────────
+    # ── Top control bar ─────────────────────────
     ctrl_l, ctrl_r = st.columns([3, 1])
     with ctrl_l:
         st.markdown(f"""
-        <p style="font-family:'Share Tech Mono',monospace;font-size:0.72rem;
-                  color:#6e7681;margin:0;">
-          🕐  Last updated: <span style="color:#c9d1d9;">
-          {datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}</span>
+        <p class="status-bar">
+            🕐  Last updated: <span>{datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}</span>
         </p>""", unsafe_allow_html=True)
     with ctrl_r:
         if st.button("⟳  Refresh Now"):
             st.rerun()
 
-    st.markdown("---", unsafe_allow_html=True)
+    st.markdown("---")
 
-    # ── Row 1 – Metric cards ───────────────────
+    # ── Row 1 – Metric cards ────────────────────
     st.markdown('<p class="section-heading">System Overview</p>', unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns(4)
@@ -353,16 +294,17 @@ def render_dashboard() -> None:
     ]
     for col, label, value, css_cls, sub in cards:
         with col:
+            # Metric card HTML — template defined in static/html/snippets.html
             st.markdown(f"""
             <div class="metric-card">
                 <p class="metric-label">{label}</p>
-                <p class="metric-value {css_cls}">{value}<span style="font-size:1rem">%</span></p>
+                <p class="metric-value {css_cls}">{value}<span>%</span></p>
                 <p class="metric-sub">{sub}</p>
             </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Row 2 – Gauges ─────────────────────────
+    # ── Row 2 – Gauges ──────────────────────────
     g1, g2, g3 = st.columns(3)
     with g1:
         st.plotly_chart(gauge_chart(stats["cpu_pct"],  "CPU",  "#58a6ff"),
@@ -374,7 +316,7 @@ def render_dashboard() -> None:
         st.plotly_chart(gauge_chart(stats["disk_pct"], "DISK", "#d2a8ff"),
                         use_container_width=True, config={"displayModeBar": False})
 
-    # ── Row 3 – Time-series charts ─────────────
+    # ── Row 3 – Time-series charts ──────────────
     st.markdown('<p class="section-heading">Live Usage History</p>', unsafe_allow_html=True)
     ch1, ch2 = st.columns(2)
     with ch1:
@@ -384,20 +326,19 @@ def render_dashboard() -> None:
         st.plotly_chart(ram_chart(), use_container_width=True,
                         config={"displayModeBar": False})
 
-    # ── Row 4 – Top-5 CPU processes ───────────
+    # ── Row 4 – Top-5 CPU processes ─────────────
     st.markdown('<p class="section-heading">Top 5 Processes by CPU</p>',
                 unsafe_allow_html=True)
 
     if not df_all.empty:
         top5 = df_all.head(5).copy()
-        # Small horizontal bar chart
         fig_top5 = go.Figure(go.Bar(
             x   =top5["CPU (%)"],
             y   =top5["Process Name"],
             orientation="h",
             marker=dict(
                 color=top5["CPU (%)"],
-                colorscale=[[0,"#21262d"],[0.5,"#388bfd"],[1,"#f78166"]],
+                colorscale=[[0, "#21262d"], [0.5, "#388bfd"], [1, "#f78166"]],
                 showscale=False,
             ),
             text=[f"{v:.1f}%" for v in top5["CPU (%)"]],
@@ -418,14 +359,14 @@ def render_dashboard() -> None:
     else:
         st.info("No process data available.")
 
-    # ── Row 5 – Full process table ─────────────
+    # ── Row 5 – Full process table ──────────────
     st.markdown('<p class="section-heading">All Running Processes</p>',
                 unsafe_allow_html=True)
 
-    # Filter / search controls
+    # Search / filter controls
     fi1, fi2, fi3 = st.columns([2, 1, 1])
     with fi1:
-        search = st.text_input("🔍  Search process name", placeholder="e.g. python, chrome…",
+        search = st.text_input("Search", placeholder="🔍  Search process name (e.g. python, chrome…)",
                                label_visibility="collapsed")
     with fi2:
         sort_by = st.selectbox("Sort by", ["CPU (%)", "Memory (%)", "PID", "Process Name"],
@@ -443,7 +384,7 @@ def render_dashboard() -> None:
             ]
 
         # Re-sort
-        ascending = sort_by in ("PID", "Process Name")
+        ascending  = sort_by in ("PID", "Process Name")
         df_display = df_display.sort_values(sort_by, ascending=ascending)
 
         # Limit rows for performance unless user wants all
@@ -453,8 +394,7 @@ def render_dashboard() -> None:
         total = len(df_all)
         shown = len(df_display)
         st.markdown(
-            f'<p style="font-family:\'Share Tech Mono\',monospace;font-size:0.7rem;'
-            f'color:#6e7681;margin-bottom:0.4rem;">Showing {shown} of {total} processes</p>',
+            f'<p class="process-count">Showing {shown} of {total} processes</p>',
             unsafe_allow_html=True,
         )
 
@@ -469,15 +409,13 @@ def render_dashboard() -> None:
     else:
         st.warning("Could not retrieve process list.")
 
-    # ── Auto-refresh footer ────────────────────
+    # ── Footer ──────────────────────────────────
     st.markdown("""
-    <p style="text-align:center;font-family:'Share Tech Mono',monospace;
-              font-size:0.65rem;color:#30363d;margin-top:2rem;">
+    <p class="dash-footer">
         ⚡ Process Monitor · data sourced from psutil · auto-refreshes every 2 s
     </p>""", unsafe_allow_html=True)
 
-    # 2-second auto-refresh via Streamlit's rerun mechanism
-    import time
+    # ── Auto-refresh (2-second interval) ────────
     time.sleep(2)
     st.rerun()
 

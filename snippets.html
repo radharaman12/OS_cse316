@@ -1,0 +1,114 @@
+<!--
+  snippets.html
+  Real-Time Process Monitoring Dashboard
+  ===============================================================
+  This file documents every HTML fragment injected via
+  st.markdown(..., unsafe_allow_html=True) in app.py.
+  It is NOT executed directly — it serves as a readable reference
+  and can be used to preview the markup in isolation.
+  ===============================================================
+-->
+
+<!-- ═══════════════════════════════════════════
+     1. PAGE HEADER BAR
+     Injected once at the top of render_dashboard()
+═══════════════════════════════════════════ -->
+<div class="dash-header">
+    <div>
+        <p class="dash-title">⚡ Process Monitor</p>
+        <p class="dash-subtitle">REAL-TIME SYSTEM TELEMETRY · AUTO-REFRESH EVERY 2 s</p>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     2. TIMESTAMP / LAST-UPDATED LINE
+     Injected in the control bar (left column).
+     {datetime} is substituted at runtime by Python's
+     datetime.now().strftime(...)
+═══════════════════════════════════════════ -->
+<p class="status-bar">
+    🕐  Last updated: <span>{datetime}</span>
+</p>
+
+
+<!-- ═══════════════════════════════════════════
+     3. SECTION HEADINGS
+     Re-used for every labelled section.
+     Replace {title} with the heading text.
+═══════════════════════════════════════════ -->
+
+<!-- System Overview -->
+<p class="section-heading">System Overview</p>
+
+<!-- Live Usage History -->
+<p class="section-heading">Live Usage History</p>
+
+<!-- Top 5 Processes by CPU -->
+<p class="section-heading">Top 5 Processes by CPU</p>
+
+<!-- All Running Processes -->
+<p class="section-heading">All Running Processes</p>
+
+
+<!-- ═══════════════════════════════════════════
+     4. METRIC CARD  (×4 – one per system stat)
+     Rendered inside Streamlit columns.
+     Replace placeholders with live Python values:
+       {label}     → e.g. "CPU USAGE"
+       {css_class} → cpu-color | ram-color | disk-color | net-color
+       {value}     → e.g. "42.3"
+       {sub}       → e.g. "Cores: 8 physical"
+═══════════════════════════════════════════ -->
+<div class="metric-card">
+    <p class="metric-label">{label}</p>
+    <p class="metric-value {css_class}">{value}<span>%</span></p>
+    <p class="metric-sub">{sub}</p>
+</div>
+
+<!-- Live examples (static, for reference) -->
+
+<!-- CPU card -->
+<div class="metric-card">
+    <p class="metric-label">CPU USAGE</p>
+    <p class="metric-value cpu-color">42.3<span>%</span></p>
+    <p class="metric-sub">Cores: 8 physical</p>
+</div>
+
+<!-- RAM card -->
+<div class="metric-card">
+    <p class="metric-label">RAM USAGE</p>
+    <p class="metric-value ram-color">67.1<span>%</span></p>
+    <p class="metric-sub">10.7 / 16.0 GB</p>
+</div>
+
+<!-- DISK card -->
+<div class="metric-card">
+    <p class="metric-label">DISK USAGE</p>
+    <p class="metric-value disk-color">54.0<span>%</span></p>
+    <p class="metric-sub">270 / 500 GB</p>
+</div>
+
+<!-- NET card -->
+<div class="metric-card">
+    <p class="metric-label">NET SENT / RECV</p>
+    <p class="metric-value net-color">1024<span>%</span></p>
+    <p class="metric-sub">↑ 1024 MB  ↓ 3048 MB</p>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     5. PROCESS COUNT LABEL
+     Shown above the process table.
+     {shown} and {total} are Python integers.
+═══════════════════════════════════════════ -->
+<p class="process-count">Showing {shown} of {total} processes</p>
+
+
+<!-- ═══════════════════════════════════════════
+     6. PAGE FOOTER
+     Injected once at the bottom of render_dashboard()
+═══════════════════════════════════════════ -->
+<p class="dash-footer">
+    ⚡ Process Monitor · data sourced from psutil · auto-refreshes every 2 s
+</p>

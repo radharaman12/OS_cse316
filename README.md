@@ -1,62 +1,66 @@
-# ⚡ Real-Time Process Monitoring Dashboard
+# 🛡️ KIDS — Kernel-Level Intrusion Detection System
 
-A dark-mode, industrial-style system monitor built with
-**Python · Streamlit · psutil · Plotly · Pandas**.
-
----
-
-## 📁 Project Structure
-
-```
-process_monitor/
-├── app.py                    ← Main Streamlit application
-├── README.md                 ← This file
-├── static/
-│   ├── css/
-│   │   └── dashboard.css     ← All CSS styles (loaded at runtime by app.py)
-│   └── html/
-│       ├── snippets.html     ← HTML fragment reference & documentation
-│       └── preview.html      ← Static browser preview (no Python needed)
-└── templates/
-    └── (reserved for Jinja2 templates)
-```
+A real-time cybersecurity monitoring dashboard built with **Python + Streamlit**.
+Simulates kernel-level monitoring, detects anomalies using threshold rules and
+an Isolation Forest ML model, and displays live alerts and metrics.
 
 ---
 
-## 📦 Installation
+## 🚀 Quick Start
 
+### 1. Install dependencies
 ```bash
-pip install streamlit psutil pandas plotly
+pip install -r requirements.txt
 ```
 
----
-
-## 🚀 Run the App
-
+### 2. Run the application
 ```bash
-cd process_monitor
 streamlit run app.py
 ```
 
-Then open **http://localhost:8501** in your browser.
+### 3. Open in browser
+Streamlit will open automatically at `http://localhost:8501`
 
 ---
 
-## 🖼️ Preview Without Running Python
+## 📂 Project Structure
 
-Open `static/html/preview.html` directly in any browser to see
-the dashboard layout and CSS styling with static sample data.
+```
+kids_app/
+├── app.py            ← Main Streamlit application
+├── requirements.txt  ← Python dependencies
+└── README.md         ← This file
+```
 
 ---
 
-## ✨ Features
+## 🧠 Features
 
-- **4 live metric cards** — CPU, RAM, Disk, Network
-- **3 animated gauges** — colour-coded threshold zones
-- **Rolling time-series charts** — last 60 readings of CPU & RAM
-- **Top-5 CPU bar chart** — colour-scaled horizontal bars
-- **Full process table** — 50 rows by default, all with one checkbox
-- **Search / filter** — instant name search across all processes
-- **Sort controls** — by CPU, Memory, PID, or Process Name
-- **Manual Refresh button** + **auto-refresh every 2 s**
-- **Safe error handling** — `NoSuchProcess`, `AccessDenied`, `ZombieProcess` silently skipped
+| Feature | Description |
+|---|---|
+| Real-Time Monitoring | Auto-refreshes every 3 seconds with live charts |
+| Threshold Detection | CPU/Mem/Disk/Net rules with WARNING and CRITICAL levels |
+| ML Detection | Isolation Forest trained on normal baseline data |
+| Process Watchlist | Flags nc, nmap, perl — common intrusion tools |
+| Attack Mode | Toggle to inject synthetic attack traffic |
+| Alert Logs | Colour-coded log table, filterable by level and rule |
+| CSV Export | Download full alert log as CSV |
+
+---
+
+## ⚙️ Detection Thresholds
+
+| Metric | Warning | Critical |
+|---|---|---|
+| CPU | ≥ 75% | ≥ 90% |
+| Memory | ≥ 80% | ≥ 92% |
+| Net RX | ≥ 500 KB/s | ≥ 800 KB/s |
+| Disk I/O | ≥ 85% | ≥ 95% |
+
+---
+
+## 🎓 College Project Note
+
+This project simulates kernel-level data realistically without requiring
+actual kernel privileges (eBPF, LKM, etc.), making it safe to run on
+any standard Python environment.

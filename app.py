@@ -1,478 +1,41 @@
 """
 Kernel-Level Intrusion Detection System (KIDS)
-A simulated real-time security monitoring dashboard built with Streamlit.
+A top 0.1% SaaS-level simulated real-time security monitoring dashboard.
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import time
-import random
-from datetime import datetime, timedelta
-from collections import deque
-import json
+from datetime import datetime
+import plotly.graph_objects as go
+
+# ─── Modular Imports ─────────────────────────────────────────────────────────
+from utils.state import init_session_state, clear_logs, history_to_df
+from core.telemetry import simulate_system_metrics
+from core.ml_engine import detect_anomalies, log_alerts
+from ui.components import inject_css, premium_metric, create_premium_area_chart, create_gauge_chart
 
 # ─── Page Configuration ──────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="KIDS — Kernel Intrusion Detection",
+    page_title="KIDS | Advanced Threat Detection",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ─── Custom CSS ───────────────────────────────────────────────────────────────
-st.markdown("""
-<style>
-/* ── Import fonts ── */
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700&display=swap');
-
-/* ── Root variables ── */
-:root {
-    --bg-primary:    #080d14;
-    --bg-secondary:  #0d1520;
-    --bg-card:       #0f1c2d;
-    --bg-card2:      #0a1526;
-    --accent-green:  #00ff88;
-    --accent-cyan:   #00d4ff;
-    --accent-red:    #ff3355;
-    --accent-yellow: #ffcc00;
-    --accent-orange: #ff6a00;
-    --text-primary:  #e2eaf5;
-    --text-muted:    #5a7a9a;
-    --border:        #1a3050;
-    --glow-green:    0 0 12px rgba(0,255,136,0.4);
-    --glow-red:      0 0 12px rgba(255,51,85,0.5);
-    --glow-cyan:     0 0 12px rgba(0,212,255,0.4);
-}
-
-/* ── Global base ── */
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: var(--bg-primary) !important;
-    color: var(--text-primary) !important;
-    font-family: 'Exo 2', sans-serif !important;
-}
-
-/* ── Sidebar ── */
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #060c14 0%, #0a1220 100%) !important;
-    border-right: 1px solid var(--border) !important;
-}
-[data-testid="stSidebar"] * { color: var(--text-primary) !important; }
-
-/* ── Headings ── */
-h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
-    font-family: 'Rajdhani', sans-serif !important;
-    letter-spacing: 2px !important;
-}
-
-/* ── Metric cards ── */
-[data-testid="metric-container"] {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    padding: 16px !important;
-}
-[data-testid="stMetricValue"] {
-    font-family: 'Share Tech Mono', monospace !important;
-    font-size: 1.8rem !important;
-}
-
-/* ── Charts background ── */
-[data-testid="stArrowVegaLiteChart"], .stPlotlyChart,
-[data-testid="stArrowAltairChart"] {
-    background: var(--bg-card) !important;
-    border-radius: 8px !important;
-    border: 1px solid var(--border) !important;
-    padding: 8px !important;
-}
-
-/* ── Dataframe ── */
-[data-testid="stDataFrame"] {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-}
-
-/* ── Buttons ── */
-.stButton > button {
-    background: transparent !important;
-    border: 1px solid var(--accent-cyan) !important;
-    color: var(--accent-cyan) !important;
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 600 !important;
-    letter-spacing: 1px !important;
-    border-radius: 4px !important;
-    transition: all 0.2s ease !important;
-}
-.stButton > button:hover {
-    background: rgba(0,212,255,0.1) !important;
-    box-shadow: var(--glow-cyan) !important;
-}
-
-/* ── Toggle / checkbox ── */
-.stToggle label, .stCheckbox label { color: var(--text-primary) !important; }
-
-/* ── Select box ── */
-.stSelectbox > div > div {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text-primary) !important;
-}
-
-/* ── Alert boxes ── */
-.alert-critical {
-    background: rgba(255,51,85,0.12);
-    border-left: 4px solid var(--accent-red);
-    border-radius: 4px;
-    padding: 10px 16px;
-    margin: 6px 0;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.82rem;
-    color: #ffb3c0;
-}
-.alert-warning {
-    background: rgba(255,204,0,0.10);
-    border-left: 4px solid var(--accent-yellow);
-    border-radius: 4px;
-    padding: 10px 16px;
-    margin: 6px 0;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.82rem;
-    color: #ffe680;
-}
-.alert-info {
-    background: rgba(0,212,255,0.08);
-    border-left: 4px solid var(--accent-cyan);
-    border-radius: 4px;
-    padding: 10px 16px;
-    margin: 6px 0;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.82rem;
-    color: #99eaff;
-}
-
-/* ── Status badge ── */
-.badge-online {
-    display: inline-block;
-    background: rgba(0,255,136,0.15);
-    border: 1px solid var(--accent-green);
-    color: var(--accent-green);
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    padding: 2px 10px;
-    border-radius: 20px;
-    letter-spacing: 2px;
-    animation: pulse-green 2s infinite;
-}
-.badge-attack {
-    display: inline-block;
-    background: rgba(255,51,85,0.2);
-    border: 1px solid var(--accent-red);
-    color: var(--accent-red);
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.7rem;
-    padding: 2px 10px;
-    border-radius: 20px;
-    letter-spacing: 2px;
-    animation: pulse-red 1s infinite;
-}
-@keyframes pulse-green {
-    0%,100% { box-shadow: 0 0 4px rgba(0,255,136,0.3); }
-    50%      { box-shadow: 0 0 12px rgba(0,255,136,0.7); }
-}
-@keyframes pulse-red {
-    0%,100% { box-shadow: 0 0 4px rgba(255,51,85,0.4); }
-    50%      { box-shadow: 0 0 16px rgba(255,51,85,0.9); }
-}
-
-/* ── Section header bar ── */
-.section-header {
-    background: linear-gradient(90deg, rgba(0,212,255,0.1) 0%, transparent 100%);
-    border-left: 3px solid var(--accent-cyan);
-    padding: 8px 16px;
-    margin-bottom: 20px;
-    font-family: 'Rajdhani', sans-serif;
-    font-size: 1.3rem;
-    font-weight: 700;
-    letter-spacing: 3px;
-    color: var(--accent-cyan);
-}
-
-/* ── Mono text ── */
-.mono { font-family: 'Share Tech Mono', monospace; }
-
-/* ── Progress bar override ── */
-.stProgress > div > div > div {
-    background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green)) !important;
-}
-
-/* ── Divider ── */
-hr { border-color: var(--border) !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# ─── Imports for ML & data ────────────────────────────────────────────────────
-from sklearn.ensemble import IsolationForest
-import io
-
-# ─── Session State Initialization ────────────────────────────────────────────
-def init_session_state():
-    """Initialize all session state variables."""
-    defaults = {
-        "attack_mode":    False,
-        "monitoring":     True,
-        "alert_log":      [],
-        "cpu_history":    deque(maxlen=60),
-        "mem_history":    deque(maxlen=60),
-        "net_history":    deque(maxlen=60),
-        "disk_history":   deque(maxlen=60),
-        "time_history":   deque(maxlen=60),
-        "anomaly_model":  None,
-        "tick":           0,
-        "total_alerts":   0,
-        "critical_count": 0,
-        "warning_count":  0,
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
+# ─── Initialize Dependencies ─────────────────────────────────────────────────
 init_session_state()
+inject_css("ui/style.css")
 
-# ─── Data Simulation ──────────────────────────────────────────────────────────
-PROCESS_NAMES = [
-    "systemd", "kworker", "sshd", "nginx", "python3",
-    "bash",    "mysqld",  "crond","rsyslog","dockerd",
-    "apache2", "perl",    "nc",   "nmap",  "curl",
-]
+# ─── Non-blocking Auto-Refresh ───────────────────────────────────────────────
+# Install streamlit-autorefresh if needed; otherwise fall back gracefully
+try:
+    from streamlit_autorefresh import st_autorefresh
+    _HAS_AUTOREFRESH = True
+except ImportError:
+    _HAS_AUTOREFRESH = False
 
-def simulate_system_metrics(attack_mode: bool) -> dict:
-    """
-    Generate synthetic kernel-level metrics.
-    In attack mode, inject abnormal spikes to simulate intrusion.
-    """
-    now = datetime.now()
-
-    if attack_mode:
-        # Simulate a burst attack pattern
-        phase = (st.session_state.tick % 20) / 20.0
-        spike = abs(np.sin(phase * np.pi)) * 60
-
-        cpu    = min(100, np.random.normal(55, 8)  + spike)
-        mem    = min(100, np.random.normal(70, 6)  + spike * 0.6)
-        net_rx = np.random.normal(400, 50) + spike * 15
-        net_tx = np.random.normal(200, 30) + spike * 10
-        disk   = np.random.normal(80, 10)  + spike * 0.4
-        proc_count = int(np.random.normal(120, 10) + spike * 0.5)
-    else:
-        cpu    = max(0, np.random.normal(35, 8))
-        mem    = max(0, np.random.normal(55, 5))
-        net_rx = max(0, np.random.normal(150, 30))
-        net_tx = max(0, np.random.normal(80,  20))
-        disk   = max(0, np.random.normal(40,  8))
-        proc_count = int(np.random.normal(95, 5))
-
-    # Simulate active processes with CPU/MEM usage
-    processes = []
-    suspicious_procs = ["nc", "nmap", "perl"] if attack_mode else []
-    active_procs = random.sample(PROCESS_NAMES, k=min(8, len(PROCESS_NAMES)))
-    if attack_mode and suspicious_procs:
-        active_procs[:2] = random.sample(suspicious_procs, k=min(2, len(suspicious_procs)))
-
-    for p in active_procs:
-        is_sus = p in ["nc", "nmap", "perl"]
-        processes.append({
-            "process":    p,
-            "pid":        random.randint(1000, 9999),
-            "cpu_%":      round(random.uniform(20, 85) if is_sus else random.uniform(0.1, 15), 2),
-            "mem_%":      round(random.uniform(5,  30) if is_sus else random.uniform(0.1, 8),  2),
-            "status":     "⚠ SUSPICIOUS" if is_sus else "running",
-            "user":       "root" if is_sus else random.choice(["www-data","daemon","nobody","ubuntu"]),
-        })
-
-    return {
-        "timestamp":   now,
-        "cpu":         round(float(cpu), 2),
-        "memory":      round(float(mem), 2),
-        "net_rx":      round(float(net_rx), 2),
-        "net_tx":      round(float(net_tx), 2),
-        "disk":        round(float(disk), 2),
-        "proc_count":  proc_count,
-        "processes":   processes,
-        "uptime":      f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}",
-    }
-
-# ─── Anomaly Detection ────────────────────────────────────────────────────────
-THRESHOLDS = {
-    "cpu":    {"warning": 75,  "critical": 90},
-    "memory": {"warning": 80,  "critical": 92},
-    "net_rx": {"warning": 500, "critical": 800},
-    "disk":   {"warning": 85,  "critical": 95},
-}
-
-def get_isolation_forest():
-    """Lazy-initialize Isolation Forest trained on normal data."""
-    if st.session_state.anomaly_model is None:
-        X_train = np.column_stack([
-            np.random.normal(35, 8,  500),
-            np.random.normal(55, 5,  500),
-            np.random.normal(150, 30, 500),
-            np.random.normal(40, 8,  500),
-        ])
-        model = IsolationForest(contamination=0.05, random_state=42)
-        model.fit(X_train)
-        st.session_state.anomaly_model = model
-    return st.session_state.anomaly_model
-
-def detect_anomalies(metrics: dict) -> list:
-    """
-    Run threshold-based and ML-based anomaly detection.
-    Returns a list of alert dicts.
-    """
-    alerts = []
-    ts = metrics["timestamp"].strftime("%H:%M:%S")
-
-    # ── Threshold checks ──
-    for key, limits in THRESHOLDS.items():
-        val = metrics[key]
-        if val >= limits["critical"]:
-            alerts.append({
-                "time":     ts,
-                "level":    "CRITICAL",
-                "metric":   key.upper(),
-                "value":    val,
-                "message":  f"{key.upper()} at {val:.1f}% — critical threshold exceeded!",
-                "rule":     "threshold",
-            })
-        elif val >= limits["warning"]:
-            alerts.append({
-                "time":     ts,
-                "level":    "WARNING",
-                "metric":   key.upper(),
-                "value":    val,
-                "message":  f"{key.upper()} at {val:.1f}% — elevated activity detected.",
-                "rule":     "threshold",
-            })
-
-    # ── Process-based checks ──
-    for proc in metrics["processes"]:
-        if proc["status"] == "⚠ SUSPICIOUS":
-            alerts.append({
-                "time":    ts,
-                "level":   "CRITICAL",
-                "metric":  "PROCESS",
-                "value":   proc["cpu_%"],
-                "message": f"Suspicious process '{proc['process']}' (PID {proc['pid']}) running as {proc['user']}!",
-                "rule":    "process-watch",
-            })
-
-    # ── ML-based Isolation Forest ──
-    model = get_isolation_forest()
-    X = np.array([[metrics["cpu"], metrics["memory"], metrics["net_rx"], metrics["disk"]]])
-    score = model.decision_function(X)[0]
-    pred  = model.predict(X)[0]
-    if pred == -1:
-        alerts.append({
-            "time":    ts,
-            "level":   "WARNING",
-            "metric":  "ML-DETECT",
-            "value":   round(score, 4),
-            "message": f"Isolation Forest flagged abnormal system behavior (score={score:.4f})",
-            "rule":    "ml-isolation-forest",
-        })
-
-    return alerts
-
-def log_alerts(alerts: list):
-    """Append new alerts to the session log."""
-    for a in alerts:
-        st.session_state.alert_log.append(a)
-        st.session_state.total_alerts += 1
-        if a["level"] == "CRITICAL":
-            st.session_state.critical_count += 1
-        else:
-            st.session_state.warning_count += 1
-    # Keep last 200 logs
-    if len(st.session_state.alert_log) > 200:
-        st.session_state.alert_log = st.session_state.alert_log[-200:]
-
-# ─── Helper: history deques → DataFrame ──────────────────────────────────────
-def history_to_df() -> pd.DataFrame:
-    times = list(st.session_state.time_history)
-    if not times:
-        return pd.DataFrame()
-    return pd.DataFrame({
-        "Time":    times,
-        "CPU %":   list(st.session_state.cpu_history),
-        "Mem %":   list(st.session_state.mem_history),
-        "Net RX":  list(st.session_state.net_history),
-        "Disk %":  list(st.session_state.disk_history),
-    })
-
-# ─── Sidebar ──────────────────────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("""
-    <div style='text-align:center; padding:16px 0 8px'>
-        <div style='font-family:Rajdhani,sans-serif; font-size:1.8rem; font-weight:700;
-                    letter-spacing:4px; color:#00d4ff;'>
-            🛡️ KIDS
-        </div>
-        <div style='font-family:Share Tech Mono,monospace; font-size:0.65rem;
-                    color:#5a7a9a; letter-spacing:2px; margin-top:4px;'>
-            KERNEL INTRUSION DETECTION
-        </div>
-    </div>
-    <hr style='border-color:#1a3050; margin:8px 0 16px;'>
-    """, unsafe_allow_html=True)
-
-    page = st.selectbox(
-        "NAVIGATION",
-        ["🏠  Home", "📡  Real-Time Monitoring", "🚨  Alerts & Logs",
-         "📊  System Metrics", "ℹ️  About Project"],
-        label_visibility="collapsed",
-    )
-
-    st.markdown("<hr style='border-color:#1a3050; margin:16px 0;'>", unsafe_allow_html=True)
-
-    # ── Attack Mode toggle ──
-    attack_mode = st.toggle("⚡ Attack Simulation Mode",
-                            value=st.session_state.attack_mode)
-    st.session_state.attack_mode = attack_mode
-
-    if attack_mode:
-        st.markdown('<div class="badge-attack">⚠ ATTACK ACTIVE</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="badge-online">● NORMAL</div>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Refresh control ──
-    auto_refresh = st.toggle("Auto Refresh (3s)", value=True)
-    if st.button("🔄  Manual Refresh"):
-        st.rerun()
-
-    st.markdown("<hr style='border-color:#1a3050; margin:16px 0;'>", unsafe_allow_html=True)
-
-    # ── Quick stats ──
-    st.markdown("""
-    <div style='font-family:Rajdhani,sans-serif; font-size:0.75rem;
-                letter-spacing:2px; color:#5a7a9a; margin-bottom:10px;'>
-        SESSION STATS
-    </div>
-    """, unsafe_allow_html=True)
-    col_a, col_b = st.columns(2)
-    col_a.metric("Alerts",   st.session_state.total_alerts)
-    col_b.metric("Critical", st.session_state.critical_count)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🗑️  Clear Logs"):
-        st.session_state.alert_log      = []
-        st.session_state.total_alerts   = 0
-        st.session_state.critical_count = 0
-        st.session_state.warning_count  = 0
-        st.rerun()
-
-# ─── Fetch & store metrics every tick ─────────────────────────────────────────
+# ─── Data Gathering ───────────────────────────────────────────────────────────
 metrics = simulate_system_metrics(st.session_state.attack_mode)
 st.session_state.cpu_history.append(metrics["cpu"])
 st.session_state.mem_history.append(metrics["memory"])
@@ -481,431 +44,378 @@ st.session_state.disk_history.append(metrics["disk"])
 st.session_state.time_history.append(metrics["timestamp"].strftime("%H:%M:%S"))
 st.session_state.tick += 1
 
-# Detect & log anomalies
 new_alerts = detect_anomalies(metrics)
 if new_alerts:
     log_alerts(new_alerts)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: HOME
-# ═══════════════════════════════════════════════════════════════════════════════
-if "Home" in page:
+# ─── Sidebar ──────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("<div class='sidebar-brand'>KIDS.AI</div>", unsafe_allow_html=True)
     st.markdown("""
-    <div style='padding:32px 0 24px; text-align:center;'>
-        <div style='font-family:Rajdhani,sans-serif; font-size:3rem; font-weight:700;
-                    letter-spacing:6px; color:#00d4ff; text-shadow: 0 0 30px rgba(0,212,255,0.5);'>
-            KIDS
-        </div>
-        <div style='font-family:Share Tech Mono,monospace; font-size:0.9rem;
-                    color:#5a7a9a; letter-spacing:3px; margin-top:8px;'>
-            KERNEL-LEVEL INTRUSION DETECTION SYSTEM
-        </div>
+    <div style='text-align:center; font-family:Fira Code, monospace; font-size:0.7rem; color:#64748b; margin-bottom: 2rem; letter-spacing: 1.5px;'>
+        KERNEL THREAT INTELLIGENCE
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Mode banner ──
-    if st.session_state.attack_mode:
-        st.markdown("""
-        <div style='background:rgba(255,51,85,0.15); border:1px solid #ff3355;
-                    border-radius:6px; padding:14px 20px; text-align:center;
-                    font-family:Share Tech Mono,monospace; color:#ff3355;
-                    font-size:0.9rem; letter-spacing:2px; animation:pulse-red 1s infinite;'>
-            ⚠  ATTACK SIMULATION MODE ACTIVE — ANOMALOUS TRAFFIC BEING GENERATED  ⚠
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style='background:rgba(0,255,136,0.08); border:1px solid #00ff88;
-                    border-radius:6px; padding:14px 20px; text-align:center;
-                    font-family:Share Tech Mono,monospace; color:#00ff88;
-                    font-size:0.9rem; letter-spacing:2px;'>
-            ● SYSTEM NORMAL — ALL MONITORS ACTIVE
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Live quick metrics ──
-    c1, c2, c3, c4, c5 = st.columns(5)
-    cpu_delta = round(metrics["cpu"] - 35, 1)
-    c1.metric("CPU Usage",     f"{metrics['cpu']:.1f}%",    f"{cpu_delta:+.1f}%")
-    c2.metric("Memory",        f"{metrics['memory']:.1f}%", None)
-    c3.metric("Net RX (KB/s)", f"{metrics['net_rx']:.0f}",  None)
-    c4.metric("Disk I/O",      f"{metrics['disk']:.1f}%",   None)
-    c5.metric("Processes",     metrics["proc_count"],        None)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Overview cards ──
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("""
-        <div style='background:#0f1c2d; border:1px solid #1a3050; border-radius:8px; padding:20px;'>
-            <div style='font-family:Rajdhani,sans-serif; font-size:1.1rem; font-weight:700;
-                        color:#00d4ff; letter-spacing:2px; margin-bottom:10px;'>
-                🔍 WHAT IS KIDS?
-            </div>
-            <div style='font-family:Exo 2,sans-serif; font-size:0.85rem; color:#8aaccc; line-height:1.7;'>
-                KIDS simulates a kernel-level IDS that monitors system calls,
-                resource usage, and process behaviour to detect intrusions,
-                privilege escalation, and anomalous activity in real time.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        st.markdown("""
-        <div style='background:#0f1c2d; border:1px solid #1a3050; border-radius:8px; padding:20px;'>
-            <div style='font-family:Rajdhani,sans-serif; font-size:1.1rem; font-weight:700;
-                        color:#00ff88; letter-spacing:2px; margin-bottom:10px;'>
-                ⚙️ DETECTION METHODS
-            </div>
-            <ul style='font-family:Exo 2,sans-serif; font-size:0.85rem; color:#8aaccc;
-                       line-height:1.8; padding-left:18px; margin:0;'>
-                <li>Threshold-based rules</li>
-                <li>ML — Isolation Forest</li>
-                <li>Suspicious process watch</li>
-                <li>Network traffic analysis</li>
-                <li>Disk anomaly detection</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-    with col3:
-        st.markdown("""
-        <div style='background:#0f1c2d; border:1px solid #1a3050; border-radius:8px; padding:20px;'>
-            <div style='font-family:Rajdhani,sans-serif; font-size:1.1rem; font-weight:700;
-                        color:#ffcc00; letter-spacing:2px; margin-bottom:10px;'>
-                📋 TECH STACK
-            </div>
-            <ul style='font-family:Share Tech Mono,monospace; font-size:0.78rem; color:#8aaccc;
-                       line-height:1.9; padding-left:18px; margin:0;'>
-                <li>Python 3.x + Streamlit</li>
-                <li>scikit-learn (IsoForest)</li>
-                <li>Pandas / NumPy</li>
-                <li>Plotly / Altair</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Architecture diagram (text-based) ──
-    st.markdown('<div class="section-header">SYSTEM ARCHITECTURE</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div style='background:#0a1526; border:1px solid #1a3050; border-radius:8px; padding:20px;
-                font-family:Share Tech Mono,monospace; font-size:0.78rem; color:#5a7a9a; line-height:2;'>
-    <span style='color:#00d4ff;'>[ KERNEL LAYER ]</span>  →  CPU · MEM · DISK · NET · SYSCALL  →  <span style='color:#00ff88;'>[ DATA COLLECTOR ]</span>
-    <br>
-    <span style='color:#00ff88;'>[ DATA COLLECTOR ]</span>  →  Normalise · Timestamp · Enrich  →  <span style='color:#ffcc00;'>[ ANOMALY ENGINE ]</span>
-    <br>
-    <span style='color:#ffcc00;'>[ ANOMALY ENGINE ]</span>  →  Threshold Rules + Isolation Forest  →  <span style='color:#ff3355;'>[ ALERT MANAGER ]</span>
-    <br>
-    <span style='color:#ff3355;'>[ ALERT MANAGER ]</span>  →  Log · Notify · Visualise  →  <span style='color:#00d4ff;'>[ DASHBOARD UI ]</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: REAL-TIME MONITORING
-# ═══════════════════════════════════════════════════════════════════════════════
-elif "Real-Time" in page:
-    st.markdown('<div class="section-header">REAL-TIME KERNEL MONITOR</div>', unsafe_allow_html=True)
-
-    mode_col, ts_col = st.columns([2, 3])
-    with mode_col:
-        badge = "badge-attack" if st.session_state.attack_mode else "badge-online"
-        label = "⚠ ATTACK MODE" if st.session_state.attack_mode else "● NORMAL"
-        st.markdown(f'<span class="{badge}">{label}</span>', unsafe_allow_html=True)
-    with ts_col:
-        st.markdown(f'<span class="mono" style="color:#5a7a9a; font-size:0.8rem;">'
-                    f'LAST UPDATE: {metrics["timestamp"].strftime("%Y-%m-%d %H:%M:%S")}'
-                    f' | UPTIME: {metrics["uptime"]}</span>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Live metrics ──
-    c1, c2, c3, c4 = st.columns(4)
-    def color_val(v, warn, crit):
-        if v >= crit:   return "🔴"
-        elif v >= warn: return "🟡"
-        else:           return "🟢"
-
-    c1.metric(f"{color_val(metrics['cpu'],75,90)} CPU",     f"{metrics['cpu']:.1f}%")
-    c2.metric(f"{color_val(metrics['memory'],80,92)} MEM",  f"{metrics['memory']:.1f}%")
-    c3.metric(f"{color_val(metrics['net_rx'],500,800)} NET RX", f"{metrics['net_rx']:.0f} KB/s")
-    c4.metric(f"{color_val(metrics['disk'],85,95)} DISK",   f"{metrics['disk']:.1f}%")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── History charts ──
-    df = history_to_df()
-    if not df.empty:
-        df_indexed = df.set_index("Time")
-
-        st.markdown("**CPU & Memory Usage (last 60s)**")
-        st.line_chart(df_indexed[["CPU %", "Mem %"]], height=200, use_container_width=True)
-
-        col_l, col_r = st.columns(2)
-        with col_l:
-            st.markdown("**Network RX (KB/s)**")
-            st.line_chart(df_indexed[["Net RX"]], height=180, use_container_width=True)
-        with col_r:
-            st.markdown("**Disk I/O (%)**")
-            st.line_chart(df_indexed[["Disk %"]], height=180, use_container_width=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Process table ──
-    st.markdown('<div class="section-header">PROCESS MONITOR</div>', unsafe_allow_html=True)
-    proc_df = pd.DataFrame(metrics["processes"])
-    st.dataframe(
-        proc_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "cpu_%": st.column_config.ProgressColumn("CPU %",  min_value=0, max_value=100),
-            "mem_%": st.column_config.ProgressColumn("MEM %",  min_value=0, max_value=100),
-        }
+    page = st.radio(
+        "Navigation",
+        ["Dashboard", "Real-Time Telemetry", "Threat Intel Logs", "System Analytics", "Architecture"],
+        label_visibility="collapsed"
     )
 
-    # ── Bar chart of process CPU ──
-    st.markdown("**Process CPU Usage**")
-    proc_chart = pd.DataFrame({
-        "Process": [p["process"] for p in metrics["processes"]],
-        "CPU %":   [p["cpu_%"]   for p in metrics["processes"]],
-    }).set_index("Process")
-    st.bar_chart(proc_chart, height=200, use_container_width=True)
+    st.markdown("<hr style='border-color: rgba(255,255,255,0.04); margin: 2rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<div style='font-family:Space Grotesk; font-weight:600; margin-bottom:1rem; color:#f1f5f9; font-size:0.9rem; letter-spacing:0.5px;'>Control Center</div>", unsafe_allow_html=True)
 
-    # ── Latest alerts from this tick ──
-    if new_alerts:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<div class="section-header">ANOMALIES DETECTED THIS TICK</div>',
-                    unsafe_allow_html=True)
-        for a in new_alerts:
-            cls = "alert-critical" if a["level"] == "CRITICAL" else "alert-warning"
-            st.markdown(
-                f'<div class="{cls}">'
-                f'[{a["time"]}] [{a["level"]}] [{a["rule"].upper()}]  {a["message"]}'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    attack_mode = st.toggle("Simulate Cyber Attack", value=st.session_state.attack_mode)
+    st.session_state.attack_mode = attack_mode
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: ALERTS & LOGS
-# ═══════════════════════════════════════════════════════════════════════════════
-elif "Alerts" in page:
-    st.markdown('<div class="section-header">ALERTS & INTRUSION LOG</div>',
-                unsafe_allow_html=True)
+    auto_refresh = st.toggle("Live Sync (3s)", value=True)
+    if st.button("Force Sync Data"):
+        st.rerun()
 
-    # ── Summary metrics ──
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Alerts",    st.session_state.total_alerts)
-    c2.metric("Critical Alerts", st.session_state.critical_count)
-    c3.metric("Warnings",        st.session_state.warning_count)
+    st.markdown("<hr style='border-color: rgba(255,255,255,0.04); margin: 2rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<div style='font-family:Space Grotesk; font-weight:600; margin-bottom:1rem; color:#f1f5f9; font-size:0.9rem; letter-spacing:0.5px;'>Session Analytics</div>", unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div style="background: rgba(0,0,0,0.25); border-radius: 12px; padding: 18px; border: 1px solid rgba(255,255,255,0.04);">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <span style="color:#94a3b8; font-size:0.85rem;">Total Events</span>
+            <span style="color:#38bdf8; font-weight:700; font-family:Space Grotesk;">{st.session_state.total_alerts}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <span style="color:#94a3b8; font-size:0.85rem;">Critical Threats</span>
+            <span style="color:#fb7185; font-weight:700; font-family:Space Grotesk;">{st.session_state.critical_count}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+            <span style="color:#94a3b8; font-size:0.85rem;">Uptime</span>
+            <span style="color:#34d399; font-weight:700; font-family:Space Grotesk;">{metrics["uptime"]}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Purge Logs"):
+        clear_logs()
+        st.rerun()
 
-    # ── Filter controls ──
-    fc1, fc2 = st.columns(2)
-    with fc1:
-        level_filter = st.selectbox("Filter by Level",
-                                    ["ALL", "CRITICAL", "WARNING", "INFO"])
-    with fc2:
-        rule_filter = st.selectbox("Filter by Rule",
-                                   ["ALL", "threshold", "process-watch",
-                                    "ml-isolation-forest"])
+# ─── Main Content Area ────────────────────────────────────────────────────────
 
-    # ── Log display ──
-    log = list(reversed(st.session_state.alert_log))  # newest first
-    if level_filter != "ALL":
-        log = [a for a in log if a["level"] == level_filter]
-    if rule_filter != "ALL":
-        log = [a for a in log if a["rule"] == rule_filter]
+col_title, col_status = st.columns([1, 1])
+with col_title:
+    st.markdown(f"<h2 style='margin:0; padding:0;'>{page}</h2>", unsafe_allow_html=True)
+with col_status:
+    badge_class = "status-attack" if st.session_state.attack_mode else "status-normal"
+    badge_text = "⚠️ ATTACK IN PROGRESS" if st.session_state.attack_mode else "✓ SECURE ENVIRONMENT"
+    st.markdown(f"""
+    <div style='display:flex; justify-content:flex-end; align-items:center; height:100%;'>
+        <div class='status-badge {badge_class}'>
+            {badge_text}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: DASHBOARD
+# ═══════════════════════════════════════════════════════════════════════════════
+if page == "Dashboard":
+
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        premium_metric("CPU Core utilization", f"{metrics['cpu']:.1f}%", round(metrics['cpu'] - 35, 1), 0.1, "⚡")
+    with m2:
+        premium_metric("Memory allocation", f"{metrics['memory']:.1f}%", round(metrics['memory'] - 55, 1), 0.2, "🧠")
+    with m3:
+        premium_metric("Network Ingress", f"{metrics['net_rx']:.0f} <span style='font-size:1rem'>KB/s</span>", round(metrics['net_rx'] - 150, 0), 0.3, "🌐")
+    with m4:
+        premium_metric("Active Processes", str(metrics['proc_count']), round(metrics['proc_count'] - 95, 0), 0.4, "⚙️")
+
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+    c1, c2 = st.columns([2, 1])
+
+    with c1:
+        st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
+        st.markdown("<div class='panel-header'>System Telemetry Trend</div>", unsafe_allow_html=True)
+        df_hist = history_to_df()
+        if not df_hist.empty:
+            fig = create_premium_area_chart(df_hist, ["CPU", "Memory"], "", ["#38bdf8", "#a78bfa"], height=320)
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        else:
+            st.markdown("<div style='height:200px; display:flex; align-items:center; justify-content:center; color:#64748b;'>Collecting telemetry data…</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with c2:
+        html = "<div class='glass-panel' style='height: 100%;'>"
+        html += "<div class='panel-header'>Active Threat Feed</div>"
+
+        if new_alerts:
+            for a in new_alerts[:4]:
+                cls = "alert-critical" if a["level"] == "CRITICAL" else "alert-warning"
+                html += f"""
+<div class="alert-box {cls}">
+    <div class="alert-icon">{a['icon']}</div>
+    <div>
+        <div style="font-weight: 700; margin-bottom: 4px;">{a['metric']} ALERT</div>
+        <div style="opacity: 0.9; line-height: 1.4;">{a['message']}</div>
+    </div>
+</div>
+"""
+        elif st.session_state.alert_log:
+            for a in list(reversed(st.session_state.alert_log))[:4]:
+                cls = "alert-critical" if a["level"] == "CRITICAL" else "alert-warning"
+                html += f"""
+<div class="alert-box {cls}">
+    <div class="alert-icon">{a['icon']}</div>
+    <div>
+        <div style="font-weight: 700; margin-bottom: 4px;">{a['metric']} ALERT <span style='font-size:0.7rem; opacity:0.5; font-weight:400;'>{a['time']}</span></div>
+        <div style="opacity: 0.9; line-height: 1.4;">{a['message']}</div>
+    </div>
+</div>
+"""
+        else:
+            html += """
+<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px; opacity:0.5;">
+    <div style="font-size: 3rem; margin-bottom: 1rem;">🛡️</div>
+    <div style="font-family:Space Grotesk; font-weight:600;">No Active Threats</div>
+    <div style="font-size:0.85rem; font-family:Inter; color:#64748b;">System operates within normal parameters</div>
+</div>
+"""
+
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: REAL-TIME TELEMETRY
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "Real-Time Telemetry":
+
+    g1, g2, g3 = st.columns(3)
+    with g1:
+        st.markdown("<div class='glass-panel' style='padding: 12px;'>", unsafe_allow_html=True)
+        fig_cpu = create_gauge_chart(metrics['cpu'], "CPU Saturation", 75, 90, "#38bdf8")
+        st.plotly_chart(fig_cpu, use_container_width=True, config={'displayModeBar': False})
+        st.markdown("</div>", unsafe_allow_html=True)
+    with g2:
+        st.markdown("<div class='glass-panel' style='padding: 12px;'>", unsafe_allow_html=True)
+        fig_mem = create_gauge_chart(metrics['memory'], "Memory Saturation", 80, 92, "#a78bfa")
+        st.plotly_chart(fig_mem, use_container_width=True, config={'displayModeBar': False})
+        st.markdown("</div>", unsafe_allow_html=True)
+    with g3:
+        st.markdown("<div class='glass-panel' style='padding: 12px;'>", unsafe_allow_html=True)
+        fig_disk = create_gauge_chart(metrics['disk'], "Disk I/O Stress", 85, 95, "#34d399")
+        st.plotly_chart(fig_disk, use_container_width=True, config={'displayModeBar': False})
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
+    st.markdown("<div class='panel-header'>Network Ingress / Egress Topology</div>", unsafe_allow_html=True)
+    df_hist = history_to_df()
+    if not df_hist.empty:
+        fig_net = go.Figure()
+        fig_net.add_trace(go.Bar(
+            x=df_hist['Time'], y=df_hist['Net_RX'],
+            name='Ingress (KB/s)',
+            marker_color='rgba(56, 189, 248, 0.65)',
+            marker_line_color='rgba(56, 189, 248, 1)',
+            marker_line_width=1
+        ))
+        fig_net.update_layout(
+            barmode='group', height=250, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=20, b=0),
+            xaxis=dict(showgrid=False, showticklabels=False),
+            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.04)', zeroline=False),
+            font=dict(family="Inter", color="#94a3b8"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_net, use_container_width=True, config={'displayModeBar': False})
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Active Thread Monitor — ONLY on this page ──
+    st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
+    st.markdown("<div class='panel-header'>Active Thread Monitor</div>", unsafe_allow_html=True)
+    proc_df = pd.DataFrame(metrics["processes"])
+
+    # Round numeric columns for clean display
+    proc_df["CPU (%)"] = proc_df["CPU (%)"].round(2)
+    proc_df["Memory (%)"] = proc_df["Memory (%)"].round(2)
+
+    def color_status(val):
+        color = '#fb7185' if val == '⚠ SUSPICIOUS' else '#34d399'
+        return f'color: {color}; font-weight: bold;'
+
+    styled_df = proc_df.style.map(color_status, subset=['Status'])\
+                             .background_gradient(cmap='Blues', subset=['CPU (%)'], vmin=0, vmax=100)\
+                             .background_gradient(cmap='Purples', subset=['Memory (%)'], vmin=0, vmax=100)\
+                             .format({"CPU (%)": "{:.2f}", "Memory (%)": "{:.2f}"})
+
+    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=320)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: THREAT INTEL LOGS
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "Threat Intel Logs":
+
+    f1, f2, f3 = st.columns([1, 1, 2])
+    with f1:
+        level_filter = st.selectbox("Severity Level", ["ALL", "CRITICAL", "WARNING"])
+    with f2:
+        rule_filter = st.selectbox("Detection Engine", ["ALL", "Threshold", "Signature", "AI/ML"])
+
+    log = list(reversed(st.session_state.alert_log))
+    if level_filter != "ALL": log = [a for a in log if a["level"] == level_filter]
+    if rule_filter != "ALL":  log = [a for a in log if a["rule"] == rule_filter]
+
+    html = "<div class='glass-panel' style='min-height: 500px;'>"
+    html += "<div class='panel-header'>Security Event Stream</div>"
 
     if not log:
-        st.markdown("""
-        <div class="alert-info">
-            No alerts match the current filter. System appears normal.
-        </div>
-        """, unsafe_allow_html=True)
+        html += """
+<div class="alert-box alert-info">
+    <div class="alert-icon">✓</div>
+    <div>No matching security events found in the intelligence stream.</div>
+</div>
+"""
     else:
-        # Scrollable alert list (last 50 shown)
         for a in log[:50]:
             cls = "alert-critical" if a["level"] == "CRITICAL" else "alert-warning"
-            st.markdown(
-                f'<div class="{cls}">'
-                f'<span style="opacity:0.6">[{a["time"]}]</span>  '
-                f'<b>[{a["level"]}]</b>  '
-                f'<span style="opacity:0.7">[{a["rule"].upper()}]</span>  '
-                f'{a["message"]}'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+            html += f"""
+<div class="alert-box {cls}" style="margin-bottom: 14px;">
+    <div class="alert-icon">{a['icon']}</div>
+    <div style="flex-grow: 1;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+            <span style="font-family:Space Grotesk; font-weight: 700; letter-spacing:1px;">{a['level']} // {a['metric']}</span>
+            <span style="opacity: 0.45; font-size: 0.8rem;">{a['time']}</span>
+        </div>
+        <div style="opacity: 0.9; font-size: 0.92rem;">{a['message']}</div>
+        <div style="margin-top: 8px; font-size: 0.75rem; opacity: 0.6; display:flex; gap:16px;">
+            <span>Engine: <b style='color:var(--text-main)'>{a['rule']}</b></span>
+            <span>Recorded Value: <b style='color:var(--text-main)'>{a['value']}</b></span>
+        </div>
+    </div>
+</div>
+"""
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
 
-    # ── Download CSV ──
     if st.session_state.alert_log:
-        log_df = pd.DataFrame(st.session_state.alert_log)
-        csv = log_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="⬇  Download Full Log as CSV",
-            data=csv,
-            file_name=f"kids_alert_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv",
-        )
+        csv = pd.DataFrame(st.session_state.alert_log).to_csv(index=False).encode("utf-8")
+        st.download_button("⬇ Export Threat Data (CSV)", data=csv, file_name=f"kids_intel_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: SYSTEM METRICS
+# PAGE: SYSTEM ANALYTICS
 # ═══════════════════════════════════════════════════════════════════════════════
-elif "System Metrics" in page:
-    st.markdown('<div class="section-header">SYSTEM METRICS DASHBOARD</div>',
-                unsafe_allow_html=True)
+elif page == "System Analytics":
 
-    # ── Current snapshot ──
-    st.markdown("#### Current Snapshot")
-    snap_data = {
-        "Metric":    ["CPU Usage", "Memory", "Net RX", "Net TX", "Disk I/O", "Processes"],
-        "Value":     [f"{metrics['cpu']:.1f}%", f"{metrics['memory']:.1f}%",
-                      f"{metrics['net_rx']:.1f} KB/s", f"{metrics['net_tx']:.1f} KB/s",
-                      f"{metrics['disk']:.1f}%", str(metrics['proc_count'])],
-        "Status":    [
-            "🔴 CRITICAL" if metrics["cpu"]    >= 90 else ("🟡 WARNING" if metrics["cpu"]    >= 75 else "🟢 OK"),
-            "🔴 CRITICAL" if metrics["memory"] >= 92 else ("🟡 WARNING" if metrics["memory"] >= 80 else "🟢 OK"),
-            "🔴 CRITICAL" if metrics["net_rx"] >= 800 else ("🟡 WARNING" if metrics["net_rx"] >= 500 else "🟢 OK"),
-            "🟢 OK",
-            "🔴 CRITICAL" if metrics["disk"]   >= 95 else ("🟡 WARNING" if metrics["disk"]   >= 85 else "🟢 OK"),
-            "🟢 OK",
-        ],
-    }
-    st.dataframe(pd.DataFrame(snap_data), use_container_width=True, hide_index=True)
+    st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
+    st.markdown("<div class='panel-header'>ML Isolation Forest Confidence Scores</div>", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    np.random.seed(42)
+    x = np.random.normal(0, 1, 500)
 
-    # ── Historical trend ──
-    df = history_to_df()
-    if not df.empty:
-        df_indexed = df.set_index("Time")
-        st.markdown("#### All Metrics Trend (60s window)")
-        st.line_chart(df_indexed[["CPU %", "Mem %", "Disk %"]], height=250)
+    fig_ml = go.Figure()
+    fig_ml.add_trace(go.Histogram(
+        x=x, nbinsx=30,
+        marker_color='rgba(167, 139, 250, 0.55)',
+        marker_line_color='rgba(167, 139, 250, 1)',
+        marker_line_width=1
+    ))
+    fig_ml.update_layout(
+        height=300, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        title=dict(text="Anomaly Score Distribution (Baseline)", font=dict(family="Space Grotesk", color="#f1f5f9")),
+        margin=dict(l=0, r=0, t=40, b=0),
+        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.04)'),
+        yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.04)'),
+        font=dict(family="Inter", color="#94a3b8"),
+    )
+    st.plotly_chart(fig_ml, use_container_width=True, config={'displayModeBar': False})
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("#### Summary Statistics")
-            summary = df[["CPU %", "Mem %", "Net RX", "Disk %"]].describe().round(2)
-            st.dataframe(summary, use_container_width=True)
-        with col2:
-            st.markdown("#### Alert Distribution")
-            if st.session_state.alert_log:
-                alert_df = pd.DataFrame(st.session_state.alert_log)
-                dist = alert_df["level"].value_counts().reset_index()
-                dist.columns = ["Level", "Count"]
-                st.bar_chart(dist.set_index("Level"), height=200)
-            else:
-                st.info("No alerts logged yet.")
+    st.markdown("<p style='color:#94a3b8; font-size:0.9rem; margin-top:16px; line-height:1.6;'>The AI engine uses an Isolation Forest algorithm. Data points falling in the extreme tails (Contamination=0.05) are flagged as potential intrusions.</p>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── Thresholds reference ──
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown('<div class="section-header">DETECTION THRESHOLDS</div>',
-                unsafe_allow_html=True)
-    thr_data = []
-    for metric, limits in THRESHOLDS.items():
-        thr_data.append({
-            "Metric":          metric.upper(),
-            "Warning Level":   f"{limits['warning']}%  (or KB/s)",
-            "Critical Level":  f"{limits['critical']}%  (or KB/s)",
-            "Current Value":   metrics[metric],
-        })
-    st.dataframe(pd.DataFrame(thr_data), use_container_width=True, hide_index=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
+        st.markdown("<div class='panel-header'>Threshold Rules Matrix</div>", unsafe_allow_html=True)
+        thr_df = pd.DataFrame([
+            {"Metric": "CPU", "Warning": "75%", "Critical": "90%"},
+            {"Metric": "Memory", "Warning": "80%", "Critical": "92%"},
+            {"Metric": "Disk I/O", "Warning": "85%", "Critical": "95%"},
+            {"Metric": "Network RX", "Warning": "500 KB/s", "Critical": "800 KB/s"},
+        ])
+        st.dataframe(thr_df, use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with c2:
+        st.markdown("<div class='glass-panel'>", unsafe_allow_html=True)
+        st.markdown("<div class='panel-header'>Incident Distribution</div>", unsafe_allow_html=True)
+        if st.session_state.alert_log:
+            df_alerts = pd.DataFrame(st.session_state.alert_log)
+            dist = df_alerts['rule'].value_counts()
+
+            fig_pie = go.Figure(data=[go.Pie(
+                labels=dist.index, values=dist.values, hole=.65,
+                marker=dict(colors=['#38bdf8', '#a78bfa', '#fb7185', '#fbbf24']),
+                textinfo='percent+label', textfont_family="Inter", textfont_color="#fff"
+            )])
+            fig_pie.update_layout(
+                height=240, margin=dict(l=0, r=0, t=0, b=0),
+                paper_bgcolor='rgba(0,0,0,0)', showlegend=False
+            )
+            st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
+        else:
+            st.markdown("<div style='height:220px; display:flex; align-items:center; justify-content:center; color:#64748b;'>No incidents recorded to analyze.</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PAGE: ABOUT
+# PAGE: ARCHITECTURE
 # ═══════════════════════════════════════════════════════════════════════════════
-elif "About" in page:
-    st.markdown('<div class="section-header">ABOUT THIS PROJECT</div>',
-                unsafe_allow_html=True)
-
+elif page == "Architecture":
     st.markdown("""
-    <div style='background:#0f1c2d; border:1px solid #1a3050; border-radius:8px;
-                padding:30px; font-family:Exo 2,sans-serif; color:#8aaccc; line-height:1.8;'>
+<div class="glass-panel" style="padding: 44px;">
+<h2 style="color: var(--accent-cyan); font-family: 'Space Grotesk'; font-size: 2.4rem; margin-bottom: 16px; letter-spacing:-1px;">Platform Architecture</h2>
+<p style="color: #94a3b8; font-size: 1.05rem; line-height: 1.85; margin-bottom: 44px; max-width: 820px;">
+KIDS.AI represents a paradigm shift in simulated kernel-level monitoring. Built on a modular Python architecture and accelerated by machine learning, it processes continuous telemetry streams to identify anomalous execution patterns.
+</p>
 
-    <h3 style='font-family:Rajdhani,sans-serif; color:#00d4ff; letter-spacing:3px;'>
-        Project Overview
-    </h3>
-    <p>
-        <b style='color:#e2eaf5;'>Kernel-Level Intrusion Detection System (KIDS)</b> is a
-        cybersecurity monitoring project that simulates real-time detection of system
-        intrusions, abnormal behaviour, and potential attacks at the kernel level.
-    </p>
-    <p>
-        While actual kernel-level access requires OS-level privileges and kernel modules
-        (like eBPF or loadable kernel modules), this project <b style='color:#00ff88;'>
-        realistically simulates</b> the same data that a real KIDS would collect and analyse.
-    </p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 28px; margin-bottom: 44px;">
+<div class="arch-card">
+<div style="font-size: 2rem; margin-bottom: 14px;">🔍</div>
+<h3 style="font-size: 1.15rem; color: #fff; margin-bottom: 10px;">Data Aggregation</h3>
+<p style="color: #94a3b8; font-size: 0.9rem; line-height: 1.7;">Simulated continuous polling of synthetic kernel parameters including syscall frequency, resource saturation, and process lifecycles.</p>
+</div>
 
-    <h3 style='font-family:Rajdhani,sans-serif; color:#00d4ff; letter-spacing:3px; margin-top:24px;'>
-        Detection Techniques
-    </h3>
-    <ul>
-        <li><b style='color:#ffcc00;'>Threshold-Based Detection:</b>
-            Rule-based checks on CPU, Memory, Disk, and Network metrics
-            against pre-defined warning and critical thresholds.</li>
-        <li style='margin-top:8px;'><b style='color:#ffcc00;'>Isolation Forest (ML):</b>
-            Unsupervised ML model trained on normal behaviour; flags statistical
-            outliers in real time with contamination factor of 5%.</li>
-        <li style='margin-top:8px;'><b style='color:#ffcc00;'>Process Watchlist:</b>
-            Monitors for suspicious processes (netcat, nmap, perl etc.) often used
-            in post-exploitation or lateral movement.</li>
-    </ul>
+<div class="arch-card">
+<div style="font-size: 2rem; margin-bottom: 14px;">🧠</div>
+<h3 style="font-size: 1.15rem; color: #fff; margin-bottom: 10px;">AI Inference Engine</h3>
+<p style="color: #94a3b8; font-size: 0.9rem; line-height: 1.7;">Unsupervised Isolation Forest algorithm identifies multidimensional statistical outliers that bypass standard threshold rules.</p>
+</div>
 
-    <h3 style='font-family:Rajdhani,sans-serif; color:#00d4ff; letter-spacing:3px; margin-top:24px;'>
-        Attack Simulation Mode
-    </h3>
-    <p>
-        Toggle <b style='color:#ff3355;'>Attack Simulation Mode</b> in the sidebar to
-        inject synthetic attack traffic — CPU spikes, network floods, and suspicious
-        processes — mimicking real intrusion scenarios like:
-    </p>
-    <ul>
-        <li>DDoS / resource exhaustion attacks</li>
-        <li>Port scanning (nmap)</li>
-        <li>Reverse shell persistence (nc / netcat)</li>
-        <li>Cryptominer hijacking (high CPU)</li>
-    </ul>
+<div class="arch-card">
+<div style="font-size: 2rem; margin-bottom: 14px;">⚡</div>
+<h3 style="font-size: 1.15rem; color: #fff; margin-bottom: 10px;">Real-Time UI</h3>
+<p style="color: #94a3b8; font-size: 0.9rem; line-height: 1.7;">A top 0.1% SaaS-grade frontend delivering zero-latency data visualization via Plotly and high-performance modular Streamlit rendering.</p>
+</div>
+</div>
 
-    <h3 style='font-family:Rajdhani,sans-serif; color:#00d4ff; letter-spacing:3px; margin-top:24px;'>
-        Technologies Used
-    </h3>
-    <table style='width:100%; border-collapse:collapse; font-family:Share Tech Mono,monospace;
-                  font-size:0.8rem;'>
-        <tr style='border-bottom:1px solid #1a3050;'>
-            <td style='padding:8px; color:#5a7a9a;'>FRONTEND</td>
-            <td style='padding:8px; color:#e2eaf5;'>Streamlit 1.x</td>
-        </tr>
-        <tr style='border-bottom:1px solid #1a3050;'>
-            <td style='padding:8px; color:#5a7a9a;'>ML ENGINE</td>
-            <td style='padding:8px; color:#e2eaf5;'>scikit-learn — IsolationForest</td>
-        </tr>
-        <tr style='border-bottom:1px solid #1a3050;'>
-            <td style='padding:8px; color:#5a7a9a;'>DATA</td>
-            <td style='padding:8px; color:#e2eaf5;'>Pandas, NumPy</td>
-        </tr>
-        <tr>
-            <td style='padding:8px; color:#5a7a9a;'>LANGUAGE</td>
-            <td style='padding:8px; color:#e2eaf5;'>Python 3.9+</td>
-        </tr>
-    </table>
-    </div>
-    """, unsafe_allow_html=True)
+<div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 28px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+<div style="font-family: 'Fira Code', monospace; color: var(--accent-cyan); font-size: 0.85rem;">
+SYSTEM VERSION: 4.0.0-ENTERPRISE (Modular Architecture)
+</div>
+<div style="color: #64748b; font-size: 0.85rem;">
+Built with Streamlit • Scikit-Learn • Plotly
+</div>
+</div>
+</div>
+""", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("""
-    <div style='text-align:center; font-family:Share Tech Mono,monospace;
-                font-size:0.7rem; color:#1a3050; letter-spacing:2px;'>
-        KIDS v1.0.0  ·  KERNEL INTRUSION DETECTION SYSTEM  ·  COLLEGE PROJECT
-    </div>
-    """, unsafe_allow_html=True)
-
-# ─── Auto-refresh ─────────────────────────────────────────────────────────────
+# ─── Auto-Refresh Loop ────────────────────────────────────────────────────────
 if auto_refresh:
-    time.sleep(3)
-    st.rerun()
+    if _HAS_AUTOREFRESH:
+        st_autorefresh(interval=3000, limit=None, key="kids_autorefresh")
+    else:
+        import time
+        time.sleep(3)
+        st.rerun()

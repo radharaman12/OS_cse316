@@ -5,7 +5,7 @@ import pandas as pd
 def init_session_state():
     """Initialize all session state variables."""
     defaults = {
-        "attack_mode":    False,
+        "attack_type":    "None",
         "monitoring":     True,
         "alert_log":      [],
         "cpu_history":    deque(maxlen=60),

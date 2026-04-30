@@ -36,7 +36,7 @@ except ImportError:
     _HAS_AUTOREFRESH = False
 
 # ─── Data Gathering ───────────────────────────────────────────────────────────
-metrics = simulate_system_metrics(st.session_state.attack_mode)
+metrics = simulate_system_metrics(st.session_state.attack_type)
 st.session_state.cpu_history.append(metrics["cpu"])
 st.session_state.mem_history.append(metrics["memory"])
 st.session_state.net_history.append(metrics["net_rx"])
@@ -59,15 +59,20 @@ with st.sidebar:
 
     page = st.radio(
         "Navigation",
-        ["Dashboard", "Real-Time Telemetry", "Threat Intel Logs", "System Analytics", "Architecture"],
+        ["Dashboard", "Real-Time Telemetry", "Threat Intel Logs", "System Analytics", "Architecture", "Project Overview"],
         label_visibility="collapsed"
     )
 
     st.markdown("<hr style='border-color: rgba(255,255,255,0.04); margin: 2rem 0;'>", unsafe_allow_html=True)
     st.markdown("<div style='font-family:Space Grotesk; font-weight:600; margin-bottom:1rem; color:#f1f5f9; font-size:0.9rem; letter-spacing:0.5px;'>Control Center</div>", unsafe_allow_html=True)
 
-    attack_mode = st.toggle("Simulate Cyber Attack", value=st.session_state.attack_mode)
-    st.session_state.attack_mode = attack_mode
+    attack_opts = ["None", "DDoS (Resource Exhaustion)", "Reverse Shell (Malware)", "Data Exfiltration (Network)"]
+    attack_type = st.selectbox(
+        "Simulate Cyber Attack",
+        attack_opts,
+        index=attack_opts.index(st.session_state.attack_type) if st.session_state.attack_type in attack_opts else 0
+    )
+    st.session_state.attack_type = attack_type
 
     auto_refresh = st.toggle("Live Sync (3s)", value=True)
     if st.button("Force Sync Data"):
@@ -104,8 +109,8 @@ col_title, col_status = st.columns([1, 1])
 with col_title:
     st.markdown(f"<h2 style='margin:0; padding:0;'>{page}</h2>", unsafe_allow_html=True)
 with col_status:
-    badge_class = "status-attack" if st.session_state.attack_mode else "status-normal"
-    badge_text = "⚠️ ATTACK IN PROGRESS" if st.session_state.attack_mode else "✓ SECURE ENVIRONMENT"
+    badge_class = "status-attack" if st.session_state.attack_type != "None" else "status-normal"
+    badge_text = f"⚠️ {st.session_state.attack_type.upper()} DETECTED" if st.session_state.attack_type != "None" else "✓ SECURE ENVIRONMENT"
     st.markdown(f"""
     <div style='display:flex; justify-content:flex-end; align-items:center; height:100%;'>
         <div class='status-badge {badge_class}'>
@@ -408,6 +413,48 @@ SYSTEM VERSION: 4.0.0-ENTERPRISE (Modular Architecture)
 Built with Streamlit • Scikit-Learn • Plotly
 </div>
 </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PAGE: PROJECT OVERVIEW
+# ═══════════════════════════════════════════════════════════════════════════════
+elif page == "Project Overview":
+    st.markdown("""
+<div class="glass-panel" style="padding: 44px;">
+<h2 style="color: var(--accent-cyan); font-family: 'Space Grotesk'; font-size: 2.2rem; margin-bottom: 16px; letter-spacing:-1px;">Project Overview & Justification</h2>
+<p style="color: #94a3b8; font-size: 1.05rem; line-height: 1.85; margin-bottom: 32px; max-width: 900px;">
+The KIDS (Kernel-Level Intrusion Detection System) project was developed to bridge the gap between theoretical OS security concepts and modern SaaS visualization. By simulating complex kernel data, we provide a safe, accessible platform to study attack vectors, resource saturation, and ML-based anomaly detection without requiring root privileges or risking system stability.
+</p>
+
+<h3 style="color: #fff; font-family: 'Space Grotesk'; font-size: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 20px;">1. Simulated Attack Vectors</h3>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 40px;">
+    <div class="arch-card" style="padding: 24px;">
+        <div style="font-weight: 700; color: #fb7185; margin-bottom: 8px;">DDoS (Resource Exhaustion)</div>
+        <p style="color: #94a3b8; font-size: 0.9rem; line-height: 1.6; margin: 0;">Simulates a heavy Denial of Service attack. Justification: Validates the <b>Threshold Detection Engine</b> by artificially spiking CPU (>90%) and Memory (>92%), forcing the system to dispatch CRITICAL alerts.</p>
+    </div>
+    <div class="arch-card" style="padding: 24px;">
+        <div style="font-weight: 700; color: #a78bfa; margin-bottom: 8px;">Reverse Shell (Malware)</div>
+        <p style="color: #94a3b8; font-size: 0.9rem; line-height: 1.6; margin: 0;">Simulates malicious actors executing payloads like `nc` or `nmap` as root. Justification: Validates the <b>Process Signature Engine</b>, demonstrating how the Active Thread Monitor flags specific unauthorized binaries.</p>
+    </div>
+    <div class="arch-card" style="padding: 24px;">
+        <div style="font-weight: 700; color: #38bdf8; margin-bottom: 8px;">Data Exfiltration (Network)</div>
+        <p style="color: #94a3b8; font-size: 0.9rem; line-height: 1.6; margin: 0;">Simulates massive outward data transfer while keeping CPU relatively stable. Justification: Validates the <b>Isolation Forest AI Engine</b>, showing how multidimensional drift is caught even if single metrics don't trigger static thresholds.</p>
+    </div>
+</div>
+
+<h3 style="color: #fff; font-family: 'Space Grotesk'; font-size: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 20px;">2. Future Scope</h3>
+<ul style="color: #94a3b8; font-size: 1rem; line-height: 1.8; margin-bottom: 40px;">
+    <li><strong style="color: #e2e8f0;">eBPF Integration:</strong> Transitioning from synthetic simulation to hooking into live Linux kernel events using <code>eBPF</code> (Extended Berkeley Packet Filter) for real-world production deployment.</li>
+    <li><strong style="color: #e2e8f0;">Automated Mitigation:</strong> Allowing the system to not just detect, but automatically kill suspicious PIDs (e.g., <code>kill -9</code>) or throttle network interfaces via <code>iptables</code>.</li>
+    <li><strong style="color: #e2e8f0;">Advanced Deep Learning:</strong> Upgrading the Isolation Forest model to an Autoencoder Neural Network for highly complex sequential threat pattern recognition.</li>
+</ul>
+
+<h3 style="color: #fff; font-family: 'Space Grotesk'; font-size: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; margin-bottom: 20px;">3. Conclusion</h3>
+<p style="color: #94a3b8; font-size: 1.05rem; line-height: 1.85; margin-bottom: 0;">
+The KIDS.AI project successfully demonstrates that complex OS security monitoring can be abstracted into an intuitive, zero-latency SaaS dashboard. By combining traditional heuristic matrices with modern Machine Learning inference, we achieve a robust, multi-layered defense mechanism capable of detecting both known signatures and zero-day behavioral anomalies.
+</p>
+
 </div>
 """, unsafe_allow_html=True)
 

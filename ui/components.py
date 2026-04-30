@@ -71,7 +71,7 @@ def create_gauge_chart(value, title, threshold_warn, threshold_crit, color):
                 'thickness': 0.75, 'value': threshold_crit}
         }
     ))
-    fig.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', font={'family': "Inter"})
+    fig.update_layout(height=250, margin=dict(l=40, r=40, t=50, b=20), paper_bgcolor='rgba(0,0,0,0)', font={'family': "Inter"})
     return fig
 
 def premium_metric(title, value, delta, delay=0.1, icon=""):

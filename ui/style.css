@@ -79,8 +79,8 @@ html, body, [data-testid="stAppViewContainer"] {
     -webkit-backdrop-filter: blur(32px) saturate(1.3) !important;
     border-right: 1px solid var(--border-dim) !important;
 }
-[data-testid="stSidebar"] *:not(i):not(.material-symbols-rounded):not([class*="icon"]) {
-    font-family: 'Inter', sans-serif !important;
+[data-testid="stSidebarUserContent"] {
+    overflow-x: hidden !important;
 }
 
 /* Sidebar nav radio buttons */
